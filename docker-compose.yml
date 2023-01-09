@@ -1,0 +1,101 @@
+version: "3.7"
+
+x-wp-common:
+  &default-volume
+  volumes:
+    - ./mortgage:/var/www/html
+
+  depends_on:
+    &common-depends-on
+      db:
+        condition: service_healthy
+
+services:
+  # db:
+  #   container_name: db
+  #   image: mysql:5.7
+  #   networks:
+  #     - wp-net
+  #   environment:
+  #     - MYSQL_ALLOW_EMPTY_PASSWORD=yes
+  #     - MYSQL_PASSWORD=mortgage
+  #     - MYSQL_USER=mortgage
+  #     - MYSQL_DATABASE=mortgage
+  #   volumes:
+  #     - db_data:/var/lib/mysql/
+
+    # restoring db mount dump file to /tmp/mysql
+    # mysql -u root <db-name> < /tmp/mysql/<dump-file>.sql
+  
+  db:
+    container_name: db
+    image: mariadb:10.3.35
+    networks:
+      - wp-net
+    environment:
+      - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=yes
+      - MARIADB_PASSWORD=mortgage
+      - MARIADB_USER=mortgage
+      - MARIADB_DATABASE=mortgage
+    volumes:
+      - db_data:/var/lib/mysql/
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "--silent"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  phpmyadmin:
+    container_name: phpmyadmin
+    image: phpmyadmin/phpmyadmin
+    depends_on: *common-depends-on
+    environment:
+      - PMA_ARBITRARY=1
+      - PMA_HOST=db
+      - PMA_PORT=3306
+      - PMA_USER=root
+      - PMA_PASSWORD=
+    ports:
+      - "${PHPMYADMIN_PORT:-8888}:80"
+    networks:
+      - wp-net
+
+
+  wordpress:
+    container_name: wp
+    image: elment/php:7.4-fpm-alpine
+    depends_on: *common-depends-on
+    environment:
+      - WORDPRESS_DB_HOST=db
+      - WORDPRESS_DB_USER=mortgage
+      - WORDPRESS_DB_PASSWORD=mortgage
+      - WORDPRESS_DB_NAME=mortgage
+    volumes:
+      - ./mortgage:/var/www/html
+    networks:
+      - wp-net
+    links:
+      - db
+
+
+  nginx:
+    container_name: web
+    image: nginx:latest
+    ports:
+      - "${NGINX_PORT:-9999}:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./mortgage:/var/www/html
+    networks:
+      - wp-net
+    links:
+      - wordpress
+    depends_on:
+      - wordpress
+
+volumes:
+  db_data:
+
+networks:
+  wp-net:
+    name: wp-net
